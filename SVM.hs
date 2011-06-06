@@ -1,29 +1,30 @@
 {-
-SVM is an implementation of a support vector machine in the Haskell language.
-Copyright (C) 2010  Andrew Dougherty
-
-Send email to: andrewdougherty@me.com
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   SVM is an implementation of a support vector machine in the Haskell language.
+   Copyright (C) 2010  Andrew Dougherty
+   
+   Send email to: andrewdougherty@me.com
+   
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+   
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+   
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 -}
 
-{-# OPTIONS_GHC -XBangPatterns #-}
-
-{- This module performs support vector regression on a set of training points in order to determine
-the generating function.  Currently least squares support vector regression is implemented.  The
-optimal solution to the Langrangian is found by a conjugate gradient algorithm (CGA).  The CGA finds
-the saddle point of the dual of the Lagrangian.-}
+--{-# OPTIONS_GHC -XBangPatterns #-}
+{-# LANGUAGE TypeFamilies, BangPatterns#-}
+{-|
+   This module performs support vector regression on a set of training points in order to determine
+   the generating function.  Currently least squares support vector regression is implemented.  The
+   optimal solution to the Langrangian is found by a conjugate gradient algorithm (CGA).
+-}
 module SVM (DataSet (..), SVMSolution (..), KernelFunction (..), SVM (..), LSSVM (..),
             KernelMatrix (..), reciprocalKernelFunction, radialKernelFunction, linearKernelFunction,
             splineKernelFunction, polyKernelFunction, mlpKernelFunction) where
@@ -36,22 +37,24 @@ module SVM (DataSet (..), SVMSolution (..), KernelFunction (..), SVM (..), LSSVM
 
    -- |Each data set is a list of vectors and values which are training points of the form
    -- f(x) = y forall {x,y}.
-   data DataSet = DataSet {points::(Array Int [Double]), values::DoubleArray}
+   data DataSet a = DataSet {points::(Array Int a), values::DoubleArray}
    
    -- |The solution contains the dual weights, the support vectors and the bias.
-   data SVMSolution = SVMSolution {alpha::DoubleArray, sv::(Array Int [Double]), bias::Double}
+   data SVMSolution a = SVMSolution {alpha::DoubleArray, sv::(Array Int a), bias::Double}
    
    -- |The kernel matrix has been implemented as an unboxed array for performance reasons.
    newtype KernelMatrix = KernelMatrix DoubleArray
    
-   {- |Every kernel function represents an inner product in feature space.  The parameters are:
-     
-      * A list of kernel parameters that can be interpreted differently by each kernel function.
-     
-      * The first point in the inner product.
-     
-      * The second point in the inner product.-}
-   newtype KernelFunction = KernelFunction ([Double] -> [Double] -> [Double] -> Double)
+   {-|
+      Every kernel function represents an inner product in feature space.  The parameters are:
+      
+         * A list of kernel parameters that can be interpreted differently by each kernel function.
+      
+         * The first point in the inner product.
+      
+         * The second point in the inner product.
+   -}
+   newtype KernelFunction a = KernelFunction ([Double] -> a -> a -> Double)
    
    -- Some common kernel functions (these are called many times, so they need to be fast):
    
@@ -85,34 +88,49 @@ module SVM (DataSet (..), SVMSolution (..), KernelFunction (..), SVM (..), LSSVM
    mlpKernelFunction :: [Double] -> [Double] -> [Double] -> Double
    mlpKernelFunction (a0:a1:as) x y = tanh (a0 * linearKernelFunction as x y - a1)
    
-   {- |A support vector machine (SVM) can estimate a function based upon some training data.
-   Instances of this class need only implement the dual cost and the kernel function.  Default
-   implementations are given for finding the SVM solution, for simulating a function and for
-   creating a kernel matrix from a set of training points.  All SVMs should return a solution
-   which contains a list of the support vectors and their dual weigths.  dcost represents the
-   coefficient of the dual cost function.  This term gets added to the diagonal elements of the
-   kernel matrix and may be different for each type of SVM. -}
-   class SVM a where
-      {- |Creates a 'KernelMatrix' from the training points in the 'DataSet'.  If @kf@ is the
-      'KernelFunction' then the elements of the kernel matrix are given by @K[i,j] = kf x[i] x[j]@,
-      where the @x[i]@ are taken from the training points.  The kernel matrix is symmetric and
-      positive semi-definite.Only the bottom half of the kernel matrix is stored.-}
-      createKernelMatrix  :: a -> (Array Int [Double]) -> KernelMatrix
-      {- |The derivative of the cost function is added to the diagonal elements of the kernel
-      matrix.  This places a cost on the norm of the solution, which helps prevent overfitting
-      of the training data.-}
+   {-|
+      A support vector machine (SVM) can estimate a function based upon some training data.
+      Instances of this class need only implement the dual cost and the kernel function.  Default
+      implementations are given for finding the SVM solution, for simulating a function and for
+      creating a kernel matrix from a set of training points.  All SVMs should return a solution
+      which contains a list of the support vectors and their dual weigths.  dcost represents the
+      coefficient of the dual cost function.  This term gets added to the diagonal elements of the
+      kernel matrix and may be different for each type of SVM.
+   -}
+   class SVM a where     
+      {-|
+         Creates a 'KernelMatrix' from the training points in the 'DataSet'.  If @kf@ is the
+         'KernelFunction' then the elements of the kernel matrix are given by @K[i,j] = kf x[i] x[j]@,
+         where the @x[i]@ are taken from the training points.  The kernel matrix is symmetric and
+         positive semi-definite.Only the bottom half of the kernel matrix is stored.
+      -}
+      type F a
+      createKernelMatrix  :: a -> (Array Int (F a)) -> KernelMatrix
+      
+      {-|
+         The derivative of the cost function is added to the diagonal elements of the kernel
+         matrix.  This places a cost on the norm of the solution, which helps prevent overfitting
+         of the training data.
+      -}
       dcost               :: a -> Double
+      
       -- |This function provides access to the 'KernelFunction' used by the 'SVM'.
-      evalKernel          :: a -> [Double] -> [Double] -> Double
-      {- |This function takes an 'SVMSolution' produced by the 'SVM' passed in, and a list of points
-      in the space, and it returns a list of valuues y = f(x), where f is the generating function
-      represented by the support vector solution.-}
-      simulate            :: a -> SVMSolution -> (Array Int [Double]) -> [Double]
-      {- |This function takes a 'DataSet' and feeds it to the 'SVM'.  Then it returns the
-      'SVMSolution' which is the support vector solution for the function which generated the points
-      in the training set.  The function also takes values for epsilon and the max iterations, which
-      are used as stopping criteria in the conjugate gradient algorithm.-}
-      solve               :: a -> DataSet -> Double -> Int -> SVMSolution
+      evalKernel          :: a -> F a -> F a -> Double
+      
+      {-|
+         This function takes an 'SVMSolution' produced by the 'SVM' passed in, and a list of points
+         in the space, and it returns a list of valuues y = f(x), where f is the generating function
+         represented by the support vector solution.
+      -}
+      simulate            :: a -> SVMSolution (F a)-> (Array Int (F a)) -> [Double]
+      
+      {-|
+         This function takes a 'DataSet' and feeds it to the 'SVM'.  Then it returns the
+         'SVMSolution' which is the support vector solution for the function which generated the
+         points in the training set.  The function also takes values for epsilon and the max
+         iterations, which are used as stopping criteria in the conjugate gradient algorithm.
+      -}
+      solve               :: a -> DataSet (F a) -> Double -> Int -> SVMSolution (F a) 
       
       createKernelMatrix a x = KernelMatrix matrix
                where matrix = listArray (1, dim) [eval i j | j <- indices x, i <- range(1,j)]
@@ -134,16 +152,19 @@ module SVM (DataSet (..), SVMSolution (..), KernelFunction (..), SVM (..), LSSVM
 		      n = snd $ bounds values
 		      kernel = createKernelMatrix svm points
    
-   {- |A least squares support vector machine.  The cost represents the relative expense of missing a
-   training versus a more complicated generating function.  The higher this number the better the fit
-   of the training set, but at a cost of poorer generalization.  The LSSVM uses every training point
-   in the solution and performs least squares regression on the dual of the problem. -}
-   data LSSVM = LSSVM {kf::KernelFunction,      -- ^The kernel function defines the feature space.
+   {-|
+      A least squares support vector machine.  The cost represents the relative expense of missing a
+      training versus a more complicated generating function.  The higher this number the better the fit
+      of the training set, but at a cost of poorer generalization.  The LSSVM uses every training point
+      in the solution and performs least squares regression on the dual of the problem.
+   -}
+   data LSSVM a = LSSVM {kf::KernelFunction a,      -- ^The kernel function defines the feature space.
                        cost::Double,            -- ^The cost coefficient in the Lagrangian.
                        params::[Double]         -- ^Any parameters needed by the 'KernelFunction'.
                       }
  
-   instance SVM LSSVM where
+   instance SVM (LSSVM a) where
+      type F (LSSVM a) = a
       dcost = (0.5 /) . cost
       evalKernel (LSSVM (KernelFunction kf) _ params) = kf params
    
@@ -165,9 +186,11 @@ module SVM (DataSet (..), SVMSolution (..), KernelFunction (..), SVM (..), LSSVM
    -- The following functions are used internally for all of the linear algebra involving kernel
    -- matrices or unboxed arrays of doubles (representing vectors).
    
-   -- |Matrix multiplication between a kernel matrix and a vector is handled by this funciton.  Only
-   -- the bottom half of the matrix is stored.  This function requires 1 based indices for both of
-   -- its arguments.
+   {-|
+      Matrix multiplication between a kernel matrix and a vector is handled by this funciton.  Only
+      the bottom half of the matrix is stored.  This function requires 1 based indices for both of
+      its arguments.
+   -}
    matmult :: KernelMatrix -> DoubleArray -> DoubleArray
    matmult (KernelMatrix k) v = listArray (1, d) $ helper 1 1
             where d = snd $ bounds v
