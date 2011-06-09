@@ -118,6 +118,11 @@ module SVM (DataSet (..), SVMSolution (..), KernelFunction (..), SVM (..), LSSVM
       evalKernel          :: a -> F a -> F a -> Double
       
       {-|
+       - Simgle point prediction.
+       -}
+      predict   :: a -> SVMSolution (F a) -> F a -> Double
+      predict a (SVMSolution alpha sv b) x = (+) b $ mDot alpha $ listArray (bounds sv) [evalKernel a x v | v <- elems sv]
+      {-|
          This function takes an 'SVMSolution' produced by the 'SVM' passed in, and a list of points
          in the space, and it returns a list of valuues y = f(x), where f is the generating function
          represented by the support vector solution.
@@ -143,14 +148,14 @@ module SVM (DataSet (..), SVMSolution (..), KernelFunction (..), SVM (..), LSSVM
                where eval x = mDot alpha $ listArray (bounds sv) [evalKernel a x v | v <- elems sv]
       
       solve svm (DataSet points values) epsilon maxIter = SVMSolution alpha points b
-		where b = (mSum v) / (mSum nu)
-		      alpha = mZipWith (\x y -> x - b*y) v nu
-		      nu = cga startx ones ones kernel epsilon maxIter
-		      v = cga startx values values kernel epsilon maxIter
-		      ones = listArray (1, n) $ replicate n 1
-		      startx = listArray (1, n) $ replicate n 0
-		      n = snd $ bounds values
-		      kernel = createKernelMatrix svm points
+               where b = (mSum v) / (mSum nu)
+                     alpha = mZipWith (\x y -> x - b*y) v nu
+                     nu = cga startx ones ones kernel epsilon maxIter
+                     v = cga startx values values kernel epsilon maxIter
+                     ones = listArray (1, n) $ replicate n 1
+                     startx = listArray (1, n) $ replicate n 0
+                     n = snd $ bounds values
+                     kernel = createKernelMatrix svm points
    
    {-|
       A least squares support vector machine.  The cost represents the relative expense of missing a
